@@ -173,15 +173,15 @@
     if (ui.typing) {
       return `<div class="stage">${heroHtml('hero-big')}</div>${bubble(hello)}
         <form class="form" id="typeForm">
-          <input id="typeInput" maxlength="60" placeholder="${HIGH ? '내 생각을 써봐' : '내 생각을 써봐요'}" autocomplete="off">
-          <button class="big go" type="submit">✅ ${HIGH ? '이렇게 대답할래' : '이렇게 대답할래요'}</button>
+          <input id="typeInput" maxlength="60" placeholder="내 생각을 써봐" autocomplete="off">
+          <button class="big go" type="submit">✅ 이렇게 대답할래</button>
           <button class="big" type="button" data-act="untype" style="min-height:48px;font-size:1rem">← 고르기로 돌아가기</button>
         </form>`;
     }
     return `<div class="stage">${heroHtml('hero-big')}</div>${bubble(hello)}
       <div class="grid">
         ${q.a.map((c, i) => `<button class="big" data-act="pickQ" data-i="${i}"><span class="e">${c[0]}</span>${esc(c[1])}</button>`).join('')}
-        <button class="big wide" data-act="typeQ">${HIGH ? '✍️ 내 생각을 직접 쓸래' : '✍️ 내가 써볼래요'}</button>
+        <button class="big wide" data-act="typeQ">✍️ 내 생각을 직접 쓸래</button>
       </div>`;
   }
 
