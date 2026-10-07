@@ -150,6 +150,7 @@
     $('#screen').innerHTML = ui.tab === 'today' ? renderToday() : renderLog();
     const d = getDay(TODAY);
     if (ui.tab === 'today' && $('#hero') && d.steps === D.STEPS.length && !d.done) setTimeout(finish, 700);
+    if (ui.tab === 'today' && $('#hero') && d.steps === 1 && !d.gameDone) setTimeout(offerGame, 600);
   }
 
   // ---------- 오늘: 질문 → 마음 날씨 → 루틴 여행 ----------
@@ -268,6 +269,25 @@
     tone([523 + i * 60, 659 + i * 60]);
     updateJourney();
     if (last) setTimeout(finish, 1100);
+    if (i === 0) setTimeout(offerGame, 1000);   // 일어나기 직후, 밥 먹기 전
+  }
+
+  // ---------- 미니게임 (일어나기 → 밥먹기 사이, 하루 한 번 제안) ----------
+  function offerGame() {
+    const d = getDay(TODAY);
+    if (!window.MQGame || d.gameDone || d.done || d.steps !== 1 || ui.tab !== 'today' || !$('#hero') || !$('#modal').hidden) return;
+    openModal(`<div class="pop">
+      <div class="sticker">${KID.pet}💤</div>
+      <h2>잠깐! 준비운동 시간</h2>
+      <p>잠꾸러기 친구들을 깨워볼까? (20초)</p>
+      <button class="big go" data-act="gameStart">🎮 친구들 깨우기</button>
+      <button class="big" data-act="gameSkip" style="min-height:48px">밥 먹으러 갈래</button>
+    </div>`);
+  }
+  function gameDone(r) {
+    ui.lock = false; closeModal();
+    upd(TODAY, (x) => { x.gameDone = true; if (r) { x.game = { score: r.best, plays: r.plays }; x.gameMs = (x.gameMs || 0) + r.ms; } });
+    ui.say = stepAsk(1); updateJourney();
   }
 
   function finish() {
@@ -277,7 +297,8 @@
     let secs = null, record = false;
     upd(TODAY, (x) => {
       x.done = true; x.sticker = sticker; x.doneAt = Date.now();
-      const took = x.t0 ? Math.round((Date.now() - x.t0) / 1000) : 0;
+      // 걸린 시간에서 미니게임에 쓴 시간은 뺀다
+      const took = x.t0 ? Math.round((Date.now() - x.t0 - (x.gameMs || 0)) / 1000) : 0;
       if (took > 0 && took < 3 * 3600) { x.secs = took; secs = took; record = best !== null && took < best; }
     });
     const after = curHat();
@@ -381,6 +402,8 @@
     pickMood: (b) => { upd(TODAY, (d) => { d.mood = b.dataset.id; d.moodAt = Date.now(); }); ui.pending = 'mood-ack'; tone([494, 659]); render(); },
     nextMood: () => { ui.pending = null; render(); },
     step: (b) => doStep(+b.dataset.i),
+    gameStart: () => { ui.lock = true; window.MQGame.start($('#modal .pop'), { high: HIGH, tone }, gameDone); },
+    gameSkip: () => gameDone(null),
     speak: () => speak($('#bubbleText').textContent),
     settings: openSettings,
     closeModal,
@@ -397,7 +420,7 @@
   };
 
   document.addEventListener('click', (e) => {
-    if (e.target.id === 'modal') return closeModal();
+    if (e.target.id === 'modal') { if (!ui.lock) closeModal(); return; }   // 게임 중에는 바깥을 눌러도 닫히지 않는다
     const b = e.target.closest('[data-act]');
     if (b && ACT[b.dataset.act]) ACT[b.dataset.act](b);
   });
