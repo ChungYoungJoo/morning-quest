@@ -216,3 +216,4 @@ body.admin #app { padding-bottom: 24px; }
 .hole.up .z { opacity: 0; }
 .hole.bad { animation: shake .3s; }
 @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.resetbtn { width: 100%; margin-top: 10px; min-height: 48px; font-size: .95rem; background: #ffe9e0; }
