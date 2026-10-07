@@ -73,24 +73,30 @@
   async function pollReset() {
     if (!CLOUD || !LIVE || document.hidden) return;
     try {
-      const r = await fetch(`${CLOUD.url}/rest/v1/rpc/mq_poll_reset`, {
+      const r = await fetch(`${CLOUD.url}/rest/v1/rpc/mq_poll_resets`, {
         method: 'POST',
         headers: { apikey: CLOUD.key, 'Content-Type': 'application/json' },
         body: JSON.stringify({ p_kid: KID.id, p_day: TODAY })
       });
       if (!r.ok) return;
-      const ts = await r.json();
-      if (!ts) return;
+      const res = await r.json();          // { day: 오늘 다시 시작 시각, all: 기록 모두 지우기 시각 } (없으면 null)
+      if (!res) return;
       const seen = me().resetSeen || (me().resetSeen = {});
-      if (seen[TODAY] === ts) return;
-      seen[TODAY] = ts;
-      const d = me().days[TODAY];
-      // 지우기 요청 뒤에 아이가 이미 새로 시작했다면(기록이 요청보다 새것) 그대로 둔다
-      if (d && (!d.at || new Date(ts).getTime() > d.at)) {
-        delete me().days[TODAY];
-        save(); markDirty(TODAY);   // 서버에 늦게 올라온 낡은 기록이 되살아났다면 같이 지운다
-        ui.pending = null; ui.typing = false; ui.lock = false; closeModal(); ui.tab = 'today'; render();
-      } else save();
+      const wipe = [];                     // 이 기기에서 지울 날짜들
+      // 지우기 요청 뒤에 아이가 이미 새로 시작했다면(기록이 요청보다 새것) 그 기록은 그대로 둔다
+      const older = (k, ts) => { const d = me().days[k]; return d && (!d.at || new Date(ts).getTime() > d.at); };
+      if (res.all && seen.ALL !== res.all) {
+        seen.ALL = res.all;
+        Object.keys(me().days).forEach((k) => { if (older(k, res.all)) wipe.push(k); });
+      }
+      if (res.day && seen[TODAY] !== res.day) {
+        seen[TODAY] = res.day;
+        if (older(TODAY, res.day) && wipe.indexOf(TODAY) < 0) wipe.push(TODAY);
+      }
+      save();
+      if (!wipe.length) return;
+      wipe.forEach((k) => { delete me().days[k]; markDirty(k); });   // 서버에 늦게 올라온 낡은 기록이 되살아났다면 같이 지운다
+      ui.pending = null; ui.typing = false; ui.lock = false; closeModal(); ui.tab = 'today'; ui.sel = TODAY; render();
     } catch (e) { /* 오프라인이면 다음에 */ }
   }
 
@@ -407,7 +413,6 @@
       <h2>⚙️ 설정</h2>
       <label><input id="setSound" type="checkbox" ${S.sound ? 'checked' : ''}> 효과음 켜기</label>
       <button class="big go" data-act="saveSettings">저장</button>
-      <button class="big danger" data-act="resetAll">${esc(KID.name)} 기록 모두 지우기</button>
       <button class="big" data-act="closeModal" style="min-height:48px">닫기</button>
     </div>`);
   }
@@ -433,11 +438,6 @@
     settings: openSettings,
     closeModal,
     saveSettings: () => { S.sound = $('#setSound').checked; save(); closeModal(); },
-    resetAll: () => {
-      if (!confirm(`${KID.name}의 지난 기록이 모두 사라져요. 정말 지울까요?`)) return;
-      // 이 기기의 기록만 지운다. 엄마 화면에 이미 올라간 지난 기록은 그대로 남는다.
-      me().days = {}; me().dirty = {}; save(); ui.pending = null; closeModal(); render();
-    },
     day: (b) => { ui.sel = b.dataset.k; render(); },
     prevM: () => { if (--ui.lm < 0) { ui.lm = 11; ui.ly--; } render(); },
     nextM: () => { if (++ui.lm > 11) { ui.lm = 0; ui.ly++; } render(); }
