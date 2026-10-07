@@ -10,8 +10,8 @@
   function start(box, opt, onFinish) {
     const high = !!opt.high;
     const tone = opt.tone || function () {};
-    const UP = high ? 1000 : 1600;      // 친구가 머무는 시간
-    const GAP = high ? 650 : 950;       // 다음 친구가 나오기까지
+    const UP = high ? 1000 : 1250;      // 친구가 머무는 시간(ms)
+    const GAP = high ? 650 : 720;       // 다음 친구가 나오기까지(ms)
     const total = { best: 0, plays: 0, ms: 0 };
     let timers = [];
 
