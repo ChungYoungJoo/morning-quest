@@ -33,7 +33,7 @@
   const me = () => S.kids[KID.id] || (S.kids[KID.id] = { days: {} });
   const blank = () => ({ answer: null, mood: null, steps: 0, done: false, sticker: null, t0: null, secs: null });
   const getDay = (k) => me().days[k] || blank();
-  function upd(k, fn) { const days = me().days; const d = days[k] || (days[k] = blank()); fn(d); save(); markDirty(k); }
+  function upd(k, fn) { const days = me().days; const d = days[k] || (days[k] = blank()); fn(d); d.at = Date.now(); save(); markDirty(k); }
 
   // ---------- 엄마 화면으로 보내기 ----------
   // 바뀐 날을 Supabase 에 올린다 (쓰기 전용). 인터넷이 없거나 아직 설정 전이면 '보낼 것'으로 남겨뒀다가
@@ -66,6 +66,32 @@
       }
     } catch (e) { /* 오프라인 — 다음에 다시 */ }
     flushing = false;
+  }
+
+  // 엄마가 확인 화면에서 "오늘 다시 시작"을 눌렀는지 서버에 물어본다 (읽는 건 '눌렀던 시각' 하나뿐).
+  // 눌렀다면 이 기기의 오늘 기록을 지우고 처음 화면으로 돌아간다.
+  async function pollReset() {
+    if (!CLOUD || !LIVE || document.hidden) return;
+    try {
+      const r = await fetch(`${CLOUD.url}/rest/v1/rpc/mq_poll_reset`, {
+        method: 'POST',
+        headers: { apikey: CLOUD.key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_kid: KID.id, p_day: TODAY })
+      });
+      if (!r.ok) return;
+      const ts = await r.json();
+      if (!ts) return;
+      const seen = me().resetSeen || (me().resetSeen = {});
+      if (seen[TODAY] === ts) return;
+      seen[TODAY] = ts;
+      const d = me().days[TODAY];
+      // 지우기 요청 뒤에 아이가 이미 새로 시작했다면(기록이 요청보다 새것) 그대로 둔다
+      if (d && (!d.at || new Date(ts).getTime() > d.at)) {
+        delete me().days[TODAY];
+        save(); markDirty(TODAY);   // 서버에 늦게 올라온 낡은 기록이 되살아났다면 같이 지운다
+        ui.pending = null; ui.typing = false; ui.lock = false; closeModal(); ui.tab = 'today'; render();
+      } else save();
+    } catch (e) { /* 오프라인이면 다음에 */ }
   }
 
   const totalDone = () => Object.values(me().days).filter((d) => d.done).length;
@@ -381,7 +407,6 @@
       <h2>⚙️ 설정</h2>
       <label><input id="setSound" type="checkbox" ${S.sound ? 'checked' : ''}> 효과음 켜기</label>
       <button class="big go" data-act="saveSettings">저장</button>
-      <button class="big danger" data-act="resetToday">${esc(KID.name)} 오늘 처음부터 다시 하기</button>
       <button class="big danger" data-act="resetAll">${esc(KID.name)} 기록 모두 지우기</button>
       <button class="big" data-act="closeModal" style="min-height:48px">닫기</button>
     </div>`);
@@ -408,7 +433,6 @@
     settings: openSettings,
     closeModal,
     saveSettings: () => { S.sound = $('#setSound').checked; save(); closeModal(); },
-    resetToday: () => { delete me().days[TODAY]; save(); markDirty(TODAY); ui.pending = null; ui.typing = false; closeModal(); ui.tab = 'today'; render(); },
     resetAll: () => {
       if (!confirm(`${KID.name}의 지난 기록이 모두 사라져요. 정말 지울까요?`)) return;
       // 이 기기의 기록만 지운다. 엄마 화면에 이미 올라간 지난 기록은 그대로 남는다.
@@ -432,7 +456,9 @@
   });
 
   window.addEventListener('online', flush);
-  document.addEventListener('visibilitychange', flush);
+  document.addEventListener('visibilitychange', () => { flush(); pollReset(); });
+  setInterval(pollReset, 15000);
   render();
   flush();
+  pollReset();
 })();
