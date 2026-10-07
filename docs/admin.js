@@ -94,6 +94,32 @@
       <p class="muted" style="margin:8px 0 0">마지막 기록 ${hhmm(rec.updated_at)}</p>${resetBtn}</div>`;
   }
 
+  // 한 아이의 기록 전부를 서버에서 지운다. 실수로 누르지 않게 이름을 직접 입력해야 한다.
+  async function wipeKid(id) {
+    const kid = D.KIDS[id];
+    if (!kid) return;
+    const typed = prompt(`${kid.name}의 기록을 전부 지워요. 되돌릴 수 없어요.\n계속하려면 "${kid.name}" 이름을 그대로 입력하세요.`);
+    if (typed === null) return;
+    if (typed.trim() !== kid.name) { alert('이름이 달라서 지우지 않았어요.'); return; }
+    try {
+      const r = await fetch(`${C.url}/rest/v1/rpc/mq_admin_reset_all`, {
+        method: 'POST',
+        headers: { apikey: C.key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_pass: pass, p_kid: id })
+      });
+      if (r.status === 404) throw new Error('서버 업데이트가 아직 안 됐어요. supabase/schema.sql 을 Supabase 에서 다시 실행해주세요.');
+      if (!r.ok) throw new Error(`서버가 응답하지 않았어요 (${r.status}). 잠시 뒤에 다시 해보세요.`);
+      const res = await r.json();
+      if (!res.ok) {
+        if (MSG[res.reason]) { sessionStorage.removeItem(PASS_KEY); localStorage.removeItem(PASS_KEY); pass = ''; return showLogin(MSG[res.reason]); }
+        throw new Error('지우지 못했어요.');
+      }
+      await refresh(false);
+      const s = $('#status');
+      if (s) s.textContent = `✅ ${kid.name}의 기록 ${res.deleted}일치를 모두 지웠어요. ${kid.name} 기기에서도 곧 지워져요.`;
+    } catch (e) { alert(e.message || '인터넷 연결을 확인해주세요.'); }
+  }
+
   // 오늘 기록을 서버에서 지우고, 아이 기기가 곧 처음 화면으로 돌아가게 한다 (아이 기기는 15초마다 확인)
   async function resetKid(id) {
     const kid = D.KIDS[id];
@@ -140,6 +166,9 @@
       </div>
       ${KIDS.map((kid) => card(kid, rows[`${kid.id}|${sel}`])).join('')}
       ${overview()}
+      <div class="panel"><h2>🧹 기록 모두 지우기</h2>
+        <p class="muted" style="margin:0 0 8px">한 아이의 지난 기록 전체를 지워요(스티커·선물도 처음부터). 되돌릴 수 없어요. 아이 기기에서도 곧 지워져요.</p>
+        <div class="bar">${KIDS.map((k) => `<button class="big resetbtn" style="margin:0" data-a="wipe" data-kid="${k.id}">${k.pet} ${esc(k.name)}</button>`).join('')}</div></div>
       <div class="bar"><button class="big" data-a="today">오늘로</button><button class="big" data-a="refresh">🔄 새로고침</button><button class="big" data-a="logout">나가기</button></div>
       <p id="status" class="muted" style="text-align:center">${loadedAt ? `${hhmm(loadedAt)} 에 불러왔어요 · 1분마다 자동으로 새로고침돼요` : ''}</p>`;
     clearInterval(timer);
@@ -167,6 +196,7 @@
     else if (a === 'today') { sel = TODAY; showMain(); }
     else if (a === 'refresh') refresh(false);
     else if (a === 'reset') resetKid(b.dataset.kid);
+    else if (a === 'wipe') wipeKid(b.dataset.kid);
     else if (a === 'logout') { sessionStorage.removeItem(PASS_KEY); localStorage.removeItem(PASS_KEY); pass = ''; showLogin(''); }
   });
 
