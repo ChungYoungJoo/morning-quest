@@ -77,7 +77,10 @@
 
   function card(kid, rec) {
     const head = `<h2>${kid.pet} ${esc(kid.name)} <small>초${kid.grade}</small></h2>`;
-    if (!rec) return `<div class="panel">${head}<p class="muted">⚪ 아직 시작 전이에요.</p></div>`;
+    // 아이 기기가 '오늘'만 확인하므로 오늘 날짜일 때만 다시 시작 버튼을 보여준다
+    const resetBtn = sel === TODAY
+      ? `<button class="big resetbtn" data-a="reset" data-kid="${kid.id}">↺ ${esc(kid.name)} 오늘 다시 시작하게 하기</button>` : '';
+    if (!rec) return `<div class="panel">${head}<p class="muted">⚪ 아직 시작 전이에요.</p>${resetBtn}</div>`;
     const d = rec.data, mood = d.mood ? moodOf(d.mood) : null;
     const status = d.done ? '✅ 모험 완료!' : `🟡 진행 중 (${d.steps || 0}/${D.STEPS.length})`;
     const worry = mood && (mood.id === 'rain' || mood.id === 'storm');
@@ -88,7 +91,30 @@
       ${d.answer ? `<p>💬 ${esc(d.answer.q)}<br><b>${d.answer.icon} ${esc(d.answer.label)}</b>${d.answerAt ? ` <span class="muted">${hhmm(d.answerAt)}</span>` : ''}</p>` : '<p class="muted">오늘의 질문: 아직 대답 안 했어요</p>'}
       <div class="timeline">${stepsHtml(d)}</div>
       ${d.game ? `<p>🎮 친구 깨우기: <b>${d.game.score}명</b> <span class="muted">(${d.game.plays}번 도전)</span></p>` : d.gameDone ? '<p class="muted">🎮 친구 깨우기: 건너뜀</p>' : ''}
-      <p class="muted" style="margin:8px 0 0">마지막 기록 ${hhmm(rec.updated_at)}</p></div>`;
+      <p class="muted" style="margin:8px 0 0">마지막 기록 ${hhmm(rec.updated_at)}</p>${resetBtn}</div>`;
+  }
+
+  // 오늘 기록을 서버에서 지우고, 아이 기기가 곧 처음 화면으로 돌아가게 한다 (아이 기기는 15초마다 확인)
+  async function resetKid(id) {
+    const kid = D.KIDS[id];
+    if (!kid || !confirm(`${kid.name}의 오늘 기록을 지우고 처음부터 다시 하게 할까요?\n${kid.name} 화면이 열려 있으면 잠시 뒤 처음 화면으로 돌아가요.`)) return;
+    try {
+      const r = await fetch(`${C.url}/rest/v1/rpc/mq_admin_reset`, {
+        method: 'POST',
+        headers: { apikey: C.key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_pass: pass, p_kid: id, p_day: TODAY })
+      });
+      if (r.status === 404) throw new Error('서버 업데이트가 아직 안 됐어요. supabase/schema.sql 을 Supabase 에서 다시 실행해주세요.');
+      if (!r.ok) throw new Error(`서버가 응답하지 않았어요 (${r.status}). 잠시 뒤에 다시 해보세요.`);
+      const res = await r.json();
+      if (!res.ok) {
+        if (MSG[res.reason]) { sessionStorage.removeItem(PASS_KEY); localStorage.removeItem(PASS_KEY); pass = ''; return showLogin(MSG[res.reason]); }
+        throw new Error('지우지 못했어요.');
+      }
+      await refresh(false);
+      const s = $('#status');
+      if (s) s.textContent = `✅ ${kid.name}의 오늘 기록을 지웠어요. ${kid.name} 화면은 잠시 뒤 처음부터 다시 시작돼요.`;
+    } catch (e) { alert(e.message || '인터넷 연결을 확인해주세요.'); }
   }
 
   function overview() {
@@ -140,6 +166,7 @@
     else if (a === 'next' && sel < TODAY) { sel = addDays(sel, 1); showMain(); }
     else if (a === 'today') { sel = TODAY; showMain(); }
     else if (a === 'refresh') refresh(false);
+    else if (a === 'reset') resetKid(b.dataset.kid);
     else if (a === 'logout') { sessionStorage.removeItem(PASS_KEY); localStorage.removeItem(PASS_KEY); pass = ''; showLogin(''); }
   });
 
