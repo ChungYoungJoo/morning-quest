@@ -87,6 +87,7 @@
       ${worry ? `<p class="notice">💛 마음이 힘든 날씨를 골랐어요. 오늘 이야기를 나눠보면 좋겠어요.</p>` : ''}
       ${d.answer ? `<p>💬 ${esc(d.answer.q)}<br><b>${d.answer.icon} ${esc(d.answer.label)}</b>${d.answerAt ? ` <span class="muted">${hhmm(d.answerAt)}</span>` : ''}</p>` : '<p class="muted">오늘의 질문: 아직 대답 안 했어요</p>'}
       <div class="timeline">${stepsHtml(d)}</div>
+      ${d.game ? `<p>🎮 친구 깨우기: <b>${d.game.score}명</b> <span class="muted">(${d.game.plays}번 도전)</span></p>` : d.gameDone ? '<p class="muted">🎮 친구 깨우기: 건너뜀</p>' : ''}
       <p class="muted" style="margin:8px 0 0">마지막 기록 ${hhmm(rec.updated_at)}</p></div>`;
   }
 
