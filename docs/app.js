@@ -30,7 +30,7 @@
     return { sound: true, kids: {} };
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* 저장 불가여도 계속 동작 */ } }
-  const me = () => S.kids[KID.id] || (S.kids[KID.id] = { days: {}, autoRead: !HIGH });
+  const me = () => S.kids[KID.id] || (S.kids[KID.id] = { days: {} });
   const blank = () => ({ answer: null, mood: null, steps: 0, done: false, sticker: null, t0: null, secs: null });
   const getDay = (k) => me().days[k] || blank();
   function upd(k, fn) { const days = me().days; const d = days[k] || (days[k] = blank()); fn(d); save(); markDirty(k); }
@@ -125,9 +125,6 @@
     u.lang = 'ko-KR'; u.rate = 0.95;
     speechSynthesis.speak(u);
   }
-  // 저학년: 말풍선을 자동으로 읽어준다. 브라우저 규칙상 첫 터치 뒤부터 소리가 난다.
-  let touched = false;
-  const autoSpeak = () => { if (touched && me().autoRead) speak($('#bubbleText').textContent); };
 
   // ---------- 화면 상태 ----------
   const t0 = parse(TODAY);
@@ -153,7 +150,6 @@
     $('#screen').innerHTML = ui.tab === 'today' ? renderToday() : renderLog();
     const d = getDay(TODAY);
     if (ui.tab === 'today' && $('#hero') && d.steps === D.STEPS.length && !d.done) setTimeout(finish, 700);
-    if (ui.tab === 'today' && $('#bubbleText')) autoSpeak();
   }
 
   // ---------- 오늘: 질문 → 마음 날씨 → 루틴 여행 ----------
@@ -261,7 +257,6 @@
     document.querySelectorAll('.node').forEach((n) => { n.className = 'node ' + nodeState(+n.dataset.i, d); });
     $('.goal').classList.toggle('on', d.done);
     $('#bubbleText').textContent = ui.say;
-    autoSpeak();
   }
 
   function doStep(i) {
@@ -364,7 +359,6 @@
     openModal(`<div class="pop">
       <h2>⚙️ 설정</h2>
       <label><input id="setSound" type="checkbox" ${S.sound ? 'checked' : ''}> 효과음 켜기</label>
-      <label><input id="setRead" type="checkbox" ${me().autoRead ? 'checked' : ''}> 말풍선 자동으로 읽어주기</label>
       <button class="big go" data-act="saveSettings">저장</button>
       <button class="big danger" data-act="resetToday">${esc(KID.name)} 오늘 처음부터 다시 하기</button>
       <button class="big danger" data-act="resetAll">${esc(KID.name)} 기록 모두 지우기</button>
@@ -390,7 +384,7 @@
     speak: () => speak($('#bubbleText').textContent),
     settings: openSettings,
     closeModal,
-    saveSettings: () => { S.sound = $('#setSound').checked; me().autoRead = $('#setRead').checked; save(); closeModal(); },
+    saveSettings: () => { S.sound = $('#setSound').checked; save(); closeModal(); },
     resetToday: () => { delete me().days[TODAY]; save(); markDirty(TODAY); ui.pending = null; ui.typing = false; closeModal(); ui.tab = 'today'; render(); },
     resetAll: () => {
       if (!confirm(`${KID.name}의 지난 기록이 모두 사라져요. 정말 지울까요?`)) return;
@@ -403,7 +397,6 @@
   };
 
   document.addEventListener('click', (e) => {
-    touched = true;
     if (e.target.id === 'modal') return closeModal();
     const b = e.target.closest('[data-act]');
     if (b && ACT[b.dataset.act]) ACT[b.dataset.act](b);
