@@ -199,3 +199,20 @@ body.admin #app { padding-bottom: 24px; }
 .ov tr.sel { background: #fff3b0; }
 .bar { display: flex; gap: 8px; }
 .bar .big { flex: 1; min-height: 52px; font-size: 1rem; }
+
+/* 미니게임: 친구들 깨우기 */
+.ghud { display: flex; justify-content: space-between; font-size: 1.15rem; margin: 6px 0; }
+.gbar { height: 10px; background: #e8e1f0; border-radius: 999px; overflow: hidden; margin-bottom: 10px; }
+.gbar i { display: block; height: 100%; width: 100%; background: var(--green); transition: width .1s linear; }
+.gboard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; touch-action: manipulation; }
+.hole {
+  position: relative; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; overflow: hidden;
+  background: radial-gradient(circle at 50% 60%, #6b4f3a 35%, #4a3527); box-shadow: inset 0 -6px 0 rgba(0, 0, 0, .25);
+  user-select: none; -webkit-user-select: none;
+}
+.hole .z { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; opacity: .35; }
+.hole .f { position: absolute; left: 0; right: 0; bottom: -110%; text-align: center; font-size: 3rem; line-height: 1; transition: bottom .12s ease-out; }
+.hole.up .f { bottom: 14%; }
+.hole.up .z { opacity: 0; }
+.hole.bad { animation: shake .3s; }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
