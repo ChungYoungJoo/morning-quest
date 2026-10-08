@@ -5,20 +5,21 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#d9c8ff">
   <meta name="apple-mobile-web-app-title" content="소미 아침모험">
-  <title>소미의 아침 모험</title>
+  <title>소미의 아침·저녁 모험</title>
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
   <div id="app">
     <header class="top">
-      <h1>🌅 아침 모험</h1>
+      <h1 id="title">🌅 아침 모험</h1>
       <div id="chips"></div>
     </header>
     <main id="screen"></main>
   </div>
 
   <nav class="nav">
-    <button data-act="tab" data-t="today"><span>🗺️</span>오늘</button>
+    <button data-act="tab" data-t="am"><span>🌅</span>아침</button>
+    <button data-act="tab" data-t="pm"><span>🌙</span>저녁</button>
     <button data-act="tab" data-t="log"><span>📒</span>기록</button>
   </nav>
 
