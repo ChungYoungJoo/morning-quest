@@ -47,7 +47,7 @@
     }
     if (!res.ok) { sessionStorage.removeItem(PASS_KEY); localStorage.removeItem(PASS_KEY); pass = ''; return showLogin(MSG[res.reason] || '열 수 없어요.'); }
     rows = {};
-    res.rows.forEach((x) => { rows[`${x.kid}|${x.day}`] = x; });
+    res.rows.forEach((x) => { rows[`${x.kid}|${x.day}|${x.part || 'am'}`] = x; });
     loadedAt = new Date();
     showMain();
   }
@@ -68,30 +68,42 @@
   }
 
   // ---------- 화면 ----------
-  function stepsHtml(d) {
-    return D.STEPS.map((s, i) => {
+  const PART = {
+    am: { icon: '🌅', label: '아침', steps: D.STEPS },
+    pm: { icon: '🌙', label: '저녁', steps: D.STEPS_PM }
+  };
+
+  function stepsHtml(d, part) {
+    return PART[part].steps.map((s, i) => {
       const t = d.times && d.times[i];
       return `<div class="tl ${t ? '' : 'off'}"><span class="e">${s.icon}</span><span>${s.label}</span><b>${t ? hhmm(t) : '—'}</b></div>`;
     }).join('');
   }
 
-  function card(kid, rec) {
-    const head = `<h2>${kid.pet} ${esc(kid.name)} <small>초${kid.grade}</small></h2>`;
+  // 한 아이의 한 모험(아침 또는 저녁) 칸
+  function section(kid, part, rec) {
+    const L = PART[part];
     // 아이 기기가 '오늘'만 확인하므로 오늘 날짜일 때만 다시 시작 버튼을 보여준다
     const resetBtn = sel === TODAY
-      ? `<button class="big resetbtn" data-a="reset" data-kid="${kid.id}">↺ ${esc(kid.name)} 오늘 다시 시작하게 하기</button>` : '';
-    if (!rec) return `<div class="panel">${head}<p class="muted">⚪ 아직 시작 전이에요.</p>${resetBtn}</div>`;
+      ? `<button class="big resetbtn" data-a="reset" data-kid="${kid.id}" data-part="${part}">↺ ${esc(kid.name)} 오늘 ${L.label} 다시 시작하게 하기</button>` : '';
+    const head = `<h3>${L.icon} ${L.label}</h3>`;
+    if (!rec) return `<div class="sec">${head}<p class="muted">⚪ 아직 시작 전이에요.</p>${resetBtn}</div>`;
     const d = rec.data, mood = d.mood ? moodOf(d.mood) : null;
-    const status = d.done ? '✅ 모험 완료!' : `🟡 진행 중 (${d.steps || 0}/${D.STEPS.length})`;
+    const status = d.done ? '✅ 모험 완료!' : `🟡 진행 중 (${d.steps || 0}/${L.steps.length})`;
     const worry = mood && (mood.id === 'rain' || mood.id === 'storm');
-    return `<div class="panel">${head}
+    return `<div class="sec">${head}
       <p><b>${status}</b>${d.done && d.secs ? ` · ⏱️ ${fmtDur(d.secs)}` : ''}</p>
       ${mood ? `<p>마음 날씨: <b>${mood.icon} ${mood.label}</b>${d.moodAt ? ` <span class="muted">${hhmm(d.moodAt)}</span>` : ''}</p>` : '<p class="muted">마음 날씨: 아직 안 골랐어요</p>'}
-      ${worry ? `<p class="notice">💛 마음이 힘든 날씨를 골랐어요. 오늘 이야기를 나눠보면 좋겠어요.</p>` : ''}
-      ${d.answer ? `<p>💬 ${esc(d.answer.q)}<br><b>${d.answer.icon} ${esc(d.answer.label)}</b>${d.answerAt ? ` <span class="muted">${hhmm(d.answerAt)}</span>` : ''}</p>` : '<p class="muted">오늘의 질문: 아직 대답 안 했어요</p>'}
-      <div class="timeline">${stepsHtml(d)}</div>
+      ${worry ? `<p class="notice">💛 마음이 힘든 날씨를 골랐어요. ${part === 'pm' ? '자기 전에 이야기를 나눠보면 좋겠어요.' : '오늘 이야기를 나눠보면 좋겠어요.'}</p>` : ''}
+      ${d.answer ? `<p>💬 ${esc(d.answer.q)}<br><b>${d.answer.icon} ${esc(d.answer.label)}</b>${d.answerAt ? ` <span class="muted">${hhmm(d.answerAt)}</span>` : ''}</p>` : '<p class="muted">질문: 아직 대답 안 했어요</p>'}
+      <div class="timeline">${stepsHtml(d, part)}</div>
       ${d.game ? `<p>🎮 친구 깨우기: <b>${d.game.score}명</b> <span class="muted">(${d.game.plays}번 도전)</span></p>` : d.gameDone ? '<p class="muted">🎮 친구 깨우기: 건너뜀</p>' : ''}
       <p class="muted" style="margin:8px 0 0">마지막 기록 ${hhmm(rec.updated_at)}</p>${resetBtn}</div>`;
+  }
+
+  function card(kid) {
+    return `<div class="panel"><h2>${kid.pet} ${esc(kid.name)} <small>초${kid.grade}</small></h2>
+      ${section(kid, 'am', rows[`${kid.id}|${sel}|am`])}${section(kid, 'pm', rows[`${kid.id}|${sel}|pm`])}</div>`;
   }
 
   // 한 아이의 기록 전부를 서버에서 지운다. 실수로 누르지 않게 이름을 직접 입력해야 한다.
@@ -116,19 +128,19 @@
       }
       await refresh(false);
       const s = $('#status');
-      if (s) s.textContent = `✅ ${kid.name}의 기록 ${res.deleted}일치를 모두 지웠어요. ${kid.name} 기기에서도 곧 지워져요.`;
+      if (s) s.textContent = `✅ ${kid.name}의 기록 ${res.deleted}건을 모두 지웠어요. ${kid.name} 기기에서도 곧 지워져요.`;
     } catch (e) { alert(e.message || '인터넷 연결을 확인해주세요.'); }
   }
 
-  // 오늘 기록을 서버에서 지우고, 아이 기기가 곧 처음 화면으로 돌아가게 한다 (아이 기기는 15초마다 확인)
-  async function resetKid(id) {
-    const kid = D.KIDS[id];
-    if (!kid || !confirm(`${kid.name}의 오늘 기록을 지우고 처음부터 다시 하게 할까요?\n${kid.name} 화면이 열려 있으면 잠시 뒤 처음 화면으로 돌아가요.`)) return;
+  // 오늘 아침(또는 저녁) 기록을 서버에서 지우고, 아이 기기가 곧 처음 화면으로 돌아가게 한다 (아이 기기는 15초마다 확인)
+  async function resetKid(id, part) {
+    const kid = D.KIDS[id], L = PART[part];
+    if (!kid || !L || !confirm(`${kid.name}의 오늘 ${L.label} 기록을 지우고 처음부터 다시 하게 할까요?\n${kid.name} 화면이 열려 있으면 잠시 뒤 처음 화면으로 돌아가요.`)) return;
     try {
       const r = await fetch(`${C.url}/rest/v1/rpc/mq_admin_reset`, {
         method: 'POST',
         headers: { apikey: C.key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ p_pass: pass, p_kid: id, p_day: TODAY })
+        body: JSON.stringify({ p_pass: pass, p_kid: id, p_day: TODAY, p_part: part })
       });
       if (r.status === 404) throw new Error('서버 업데이트가 아직 안 됐어요. supabase/schema.sql 을 Supabase 에서 다시 실행해주세요.');
       if (!r.ok) throw new Error(`서버가 응답하지 않았어요 (${r.status}). 잠시 뒤에 다시 해보세요.`);
@@ -139,18 +151,20 @@
       }
       await refresh(false);
       const s = $('#status');
-      if (s) s.textContent = `✅ ${kid.name}의 오늘 기록을 지웠어요. ${kid.name} 화면은 잠시 뒤 처음부터 다시 시작돼요.`;
+      if (s) s.textContent = `✅ ${kid.name}의 오늘 ${L.label} 기록을 지웠어요. ${kid.name} 화면은 잠시 뒤 처음부터 다시 시작돼요.`;
     } catch (e) { alert(e.message || '인터넷 연결을 확인해주세요.'); }
   }
 
   function overview() {
     const days = Array.from({ length: 14 }, (_, i) => addDays(TODAY, -i));
-    const cell = (kid, k) => {
-      const rec = rows[`${kid.id}|${k}`];
-      if (!rec) return '<td class="muted">–</td>';
-      const d = rec.data, m = d.mood ? moodOf(d.mood).icon : '';
-      return `<td>${m} ${d.done ? '✅' : `🟡${d.steps || 0}`}</td>`;
+    // 칸마다 아침(🌅)과 저녁(🌙)을 나란히: 완료 ✅ / 진행 중 🟡 / 안 함 –
+    const one = (kid, k, part) => {
+      const rec = rows[`${kid.id}|${k}|${part}`];
+      if (!rec) return `<span class="muted">${PART[part].icon}–</span>`;
+      const d = rec.data;
+      return `${PART[part].icon}${d.mood ? moodOf(d.mood).icon : ''}${d.done ? '✅' : `🟡${d.steps || 0}`}`;
     };
+    const cell = (kid, k) => `<td>${one(kid, k, 'am')}<br>${one(kid, k, 'pm')}</td>`;
     return `<div class="panel"><h2>📅 최근 2주</h2>
       <table class="ov"><thead><tr><th>날짜</th>${KIDS.map((k) => `<th>${k.pet} ${esc(k.name)}</th>`).join('')}</tr></thead><tbody>
       ${days.map((k) => { const dt = parse(k); return `<tr class="${k === sel ? 'sel' : ''}" data-day="${k}"><td>${dt.getMonth() + 1}/${dt.getDate()} (${DOW[dt.getDay()]})</td>${KIDS.map((kid) => cell(kid, k)).join('')}</tr>`; }).join('')}
@@ -164,7 +178,7 @@
         <div><b>${dt.getMonth() + 1}월 ${dt.getDate()}일 (${DOW[dt.getDay()]})</b>${sel === TODAY ? ' · 오늘' : ''}</div>
         <button data-a="next" aria-label="다음날" ${sel >= TODAY ? 'disabled' : ''}>▶</button>
       </div>
-      ${KIDS.map((kid) => card(kid, rows[`${kid.id}|${sel}`])).join('')}
+      ${KIDS.map((kid) => card(kid)).join('')}
       ${overview()}
       <div class="panel"><h2>🧹 기록 모두 지우기</h2>
         <p class="muted" style="margin:0 0 8px">한 아이의 지난 기록 전체를 지워요(스티커·선물도 처음부터). 되돌릴 수 없어요. 아이 기기에서도 곧 지워져요.</p>
@@ -195,7 +209,7 @@
     else if (a === 'next' && sel < TODAY) { sel = addDays(sel, 1); showMain(); }
     else if (a === 'today') { sel = TODAY; showMain(); }
     else if (a === 'refresh') refresh(false);
-    else if (a === 'reset') resetKid(b.dataset.kid);
+    else if (a === 'reset') resetKid(b.dataset.kid, b.dataset.part);
     else if (a === 'wipe') wipeKid(b.dataset.kid);
     else if (a === 'logout') { sessionStorage.removeItem(PASS_KEY); localStorage.removeItem(PASS_KEY); pass = ''; showLogin(''); }
   });
