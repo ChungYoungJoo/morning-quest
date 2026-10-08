@@ -217,3 +217,18 @@ body.admin #app { padding-bottom: 24px; }
 .hole.bad { animation: shake .3s; }
 @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 .resetbtn { width: 100%; margin-top: 10px; min-height: 48px; font-size: .95rem; background: #ffe9e0; }
+
+/* 저녁 모험: 밤하늘 분위기 */
+body.pm.low, body.pm.high { background: linear-gradient(#2a2d63, #4a4d93 55%, #7d72b8) fixed; }
+.pm .top h1 { color: #fff; }
+.pm .map { background: linear-gradient(#171a45 0%, #33377e 50%, #5a55a6 100%); }
+.pm .deco { opacity: .9; }
+.pm .start, .pm .goal small, .pm .start small { color: #fff; }
+.pm .goal { filter: grayscale(.4) opacity(.8); }
+.pm .goal.on { filter: none; }
+.detail .sec { background: #fff; border-radius: 14px; padding: 8px 10px; margin-top: 8px; }
+.detail .sec p { margin: 4px 0; }
+.nav { gap: 8px; }
+.panel > .sec { background: #fff; border-radius: 14px; padding: 8px 10px; margin-top: 8px; }
+.sec h3 { margin: 0 0 4px; font-size: 1rem; }
+.sec p { margin: 4px 0; }
