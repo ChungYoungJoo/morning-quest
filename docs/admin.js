@@ -47,7 +47,16 @@
     }
     if (!res.ok) { sessionStorage.removeItem(PASS_KEY); localStorage.removeItem(PASS_KEY); pass = ''; return showLogin(MSG[res.reason] || '열 수 없어요.'); }
     rows = {};
-    res.rows.forEach((x) => { rows[`${x.kid}|${x.day}|${x.part || 'am'}`] = x; });
+    res.rows.forEach((x) => {
+      // 저녁에서 '영어책 1권'(5번째 칸)을 빼기 전에 올라온 기록(v 없음)은 그 칸을 빼서 맞춘다
+      const d = x.data;
+      if (x.part === 'pm' && d && !(d.v >= 2)) {
+        if ((d.steps || 0) >= 5) d.steps -= 1;
+        if (d.times && d.times.length > 4) d.times.splice(4, 1);
+        d.v = 2;
+      }
+      rows[`${x.kid}|${x.day}|${x.part || 'am'}`] = x;
+    });
     loadedAt = new Date();
     showMain();
   }
@@ -93,6 +102,7 @@
     const worry = mood && (mood.id === 'rain' || mood.id === 'storm');
     return `<div class="sec">${head}
       <p><b>${status}</b>${d.done && d.secs ? ` · ⏱️ ${fmtDur(d.secs)}` : ''}</p>
+      ${d.late ? '<p class="muted">📅 그날이 지난 뒤(다음날)에 체크한 기록이에요. 아래 시각은 체크한 시각이에요.</p>' : ''}
       ${mood ? `<p>마음 날씨: <b>${mood.icon} ${mood.label}</b>${d.moodAt ? ` <span class="muted">${hhmm(d.moodAt)}</span>` : ''}</p>` : '<p class="muted">마음 날씨: 아직 안 골랐어요</p>'}
       ${worry ? `<p class="notice">💛 마음이 힘든 날씨를 골랐어요. ${part === 'pm' ? '자기 전에 이야기를 나눠보면 좋겠어요.' : '오늘 이야기를 나눠보면 좋겠어요.'}</p>` : ''}
       ${d.answer ? `<p>💬 ${esc(d.answer.q)}<br><b>${d.answer.icon} ${esc(d.answer.label)}</b>${d.answerAt ? ` <span class="muted">${hhmm(d.answerAt)}</span>` : ''}</p>` : '<p class="muted">질문: 아직 대답 안 했어요</p>'}
