@@ -2,6 +2,7 @@
 // 주소마다 한 아이(/somi/, /sobin/)가 열리고, 학년(저학년/고학년)에 따라 문구와 기능이 다르다.
 (function () {
   'use strict';
+  const LOG_SRC = document.currentScript ? document.currentScript.src.replace(/app\.js.*$/, 'log.js') : '../log.js';
   const D = window.MQ;
   const KID = D.KIDS[window.MQ_KID];
   if (!KID) { document.body.textContent = '주소가 잘못됐어요.'; return; }
@@ -41,9 +42,20 @@
   // 아침 기록은 days, 저녁 기록은 pmDays (날짜 → 기록)
   const me = () => { const k = S.kids[KID.id] || (S.kids[KID.id] = { days: {} }); if (!k.pmDays) k.pmDays = {}; return k; };
   const recs = (part) => (part === 'pm' ? me().pmDays : me().days);
-  const blank = () => ({ answer: null, mood: null, steps: 0, done: false, sticker: null, t0: null, secs: null });
+  const blank = () => ({ answer: null, mood: null, steps: 0, done: false, sticker: null, t0: null, secs: null, v: 2 });
   const getDay = (k, part) => recs(part)[k] || blank();
-  function upd(k, fn, part) { const m = recs(part); const d = m[k] || (m[k] = blank()); fn(d); d.at = Date.now(); save(); markDirty(k, part); }
+  // late: 그날이 지난 뒤(다음날)에 체크한 기록
+  function upd(k, fn, part) { const m = recs(part); const d = m[k] || (m[k] = blank()); fn(d); d.at = Date.now(); if (k !== TODAY) d.late = true; save(); markDirty(k, part); }
+
+  // 저녁에서 '영어책 1권'(5번째 칸)을 뺐다. v 가 없는 예전 저녁 기록은 그 칸을 빼서 맞춘다.
+  function fixPm(d) {
+    if (d.v >= 2) return;
+    if ((d.steps || 0) >= 5) d.steps -= 1;
+    if (d.times && d.times.length > 4) d.times.splice(4, 1);
+    d.v = 2;
+  }
+  Object.values(me().pmDays).forEach(fixPm);
+  save();
   const curPart = () => (ui.tab === 'pm' ? 'pm' : 'am');   // 지금 보고 있는 모험 (기록 탭에서는 아침으로 본다)
 
   // 끝낸 모험 수(아침+저녁)와 연속일(아침이든 저녁이든 하나라도 끝낸 날)
@@ -68,7 +80,7 @@
     const batchim = c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 !== 0;
     return name + (batchim ? '아' : '야');
   }
-  const curQ = (part) => { const qs = P(part).qs; return qs[dayIdx(TODAY) % qs.length]; };
+  const curQ = (part) => { const qs = P(part).qs; return qs[dayIdx(ui.day) % qs.length]; };
   const moodOf = (id) => D.MOODS.find((m) => m.id === id);
   const stepAsk = (part, i) => { const s = P(part).steps[i]; return HIGH ? s.ask4 : s.ask; };
   const stepDone = (part, i) => { const s = P(part).steps[i]; return HIGH ? s.done4 : s.done; };
@@ -77,7 +89,7 @@
 
   // 이 아이의 가장 빠른 완주 기록 (오늘은 제외)
   function bestSecs(part) {
-    const v = Object.entries(recs(part)).filter(([k, d]) => k !== TODAY && d.done && d.secs).map(([, d]) => d.secs);
+    const v = Object.entries(recs(part)).filter(([k, d]) => k !== ui.day && d.done && d.secs).map(([, d]) => d.secs);
     return v.length ? Math.min.apply(null, v) : null;
   }
 
@@ -176,8 +188,10 @@
 
   // ---------- 화면 상태 ----------
   const t0 = parse(TODAY);
+  const YEST = (() => { const d = parse(TODAY); d.setDate(d.getDate() - 1); return fmt(d); })();
   // tab: 'am' 아침 / 'pm' 저녁 / 'log' 기록. 열 때는 시간에 맞는 쪽으로 시작하고, 이후엔 아이가 직접 고른다.
-  const ui = { tab: new Date().getHours() < 15 ? 'am' : 'pm', pending: null, typing: false, say: '', ly: t0.getFullYear(), lm: t0.getMonth(), sel: TODAY };
+  // day: 지금 체크하는 날 (오늘 또는 어제). 어제 못 한 것을 다음날 이어서 할 수 있다.
+  const ui = { tab: new Date().getHours() < 15 ? 'am' : 'pm', day: TODAY, pending: null, typing: false, say: '', ly: t0.getFullYear(), lm: t0.getMonth(), sel: TODAY };
 
   const heroHtml = (cls) =>
     `<div class="${cls}">${curHat().icon ? `<span class="hat">${curHat().icon}</span>` : ''}${KID.pet}</div>`;
@@ -201,16 +215,59 @@
     document.body.classList.toggle('pm', ui.tab === 'pm');
     document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.t === ui.tab));
     $('#title').textContent = log ? '📒 나의 기록' : `${P(part).icon} ${P(part).label} 모험`;
-    $('#screen').innerHTML = log ? renderLog() : renderToday(part);
+    $('#screen').innerHTML = log ? renderLogTab() : renderDayBar(part) + renderToday(part);
+    updateLockIcon();
     if (log || !$('#hero')) return;
-    const d = getDay(TODAY, part);
-    if (d.steps === P(part).steps.length && !d.done) setTimeout(() => finish(part), 700);
+    const d = getDay(ui.day, part), day = ui.day;
+    if (d.steps === P(part).steps.length && !d.done) setTimeout(() => finish(part, day), 700);
     if (part === 'am' && d.steps === 1 && !d.gameDone) setTimeout(offerGame, 600);
+  }
+
+  // 기록 탭은 처음 열 때 log.js 를 불러온다 (app.js 를 가볍게 두려고 나눈 파일)
+  let logRender = null, logLoading = false;
+  function renderLogTab() {
+    if (window.MQLog) {
+      logRender = logRender || window.MQLog({ D, PARTS, DOW, HIGH, TODAY, ui, P, getDay, recs, moodOf, totalDone, fmtDur, esc, pad, parse });
+      return logRender();
+    }
+    if (!logLoading) {
+      logLoading = true;
+      const s = document.createElement('script');
+      s.src = LOG_SRC;
+      s.onload = () => { if (ui.tab === 'log') render(); };
+      s.onerror = () => { logLoading = false; };
+      document.head.appendChild(s);
+    }
+    return '<div class="panel"><p>기록을 불러오는 중이에요…</p></div>';
+  }
+
+  // 저녁 모험은 그날 아침 모험을 끝내야 열린다 (이미 끝낸 저녁이면 계속 볼 수 있다)
+  const pmLocked = () => !getDay(ui.day, 'am').done && !getDay(ui.day, 'pm').done;
+  function updateLockIcon() {
+    const s = document.querySelector('.nav button[data-t=pm] span');
+    if (s) s.textContent = pmLocked() ? '🔒' : '🌙';
+  }
+  function renderLocked() {
+    const am = getDay(ui.day, 'am'), yest = ui.day !== TODAY;
+    return `<div class="stage">${heroHtml('hero-big')}</div>
+      ${bubble(`${call(KID.name)}, 저녁 모험은 ${yest ? '어제' : '오늘'} 아침 모험을 끝내야 열려요! 먼저 아침 모험부터 해볼까?`)}
+      <div class="panel" style="text-align:center">🔒 ${yest ? '어제 ' : ''}아침 모험 <b>${am.steps || 0}/${P('am').steps.length}</b></div>
+      <button class="big go" data-act="goAm">🌅 아침 모험하러 가기</button>`;
+  }
+
+  // 오늘 / 어제 고르기. 어제 칸에는 그 모험이 아직 안 끝났으면 📝, 끝났으면 ✅ 를 붙인다.
+  const yestLabel = (part) => { const y = parse(YEST); return `어제 (${y.getMonth() + 1}/${y.getDate()}) ${getDay(YEST, part).done ? '✅' : '📝'}`; };
+  function renderDayBar(part) {
+    return `<div class="daybar">
+      <button class="${ui.day === TODAY ? 'on' : ''}" data-act="setDay" data-d="${TODAY}">📅 오늘</button>
+      <button class="${ui.day === YEST ? 'on' : ''}" data-act="setDay" data-d="${YEST}">${yestLabel(part)}</button>
+    </div>${ui.day === YEST ? `<div class="notice yest">📅 어제 ${P(part).label} 모험을 이어서 하고 있어요. 어제 날짜로 기록돼요.</div>` : ''}`;
   }
 
   // ---------- 오늘: 질문 → 마음 날씨 → 루틴 여행 ----------
   function renderToday(part) {
-    const d = getDay(TODAY, part);
+    if (part === 'pm' && pmLocked()) return renderLocked();
+    const d = getDay(ui.day, part);
     if (ui.pending === 'q-ack' && d.answer) return renderQAck(d, part);
     if (!d.answer) return renderQ(part);
     if (ui.pending === 'mood-ack' && d.mood) return renderMoodAck(d, part);
@@ -220,7 +277,8 @@
 
   function renderQ(part) {
     const q = curQ(part);
-    const hello = `${greet(part)} 오늘의 질문! ${q.q}`;
+    const hello = ui.day === TODAY ? `${greet(part)} 오늘의 질문! ${q.q}`
+      : `${call(KID.name)}, 어제 ${P(part).label} 모험을 이어서 해볼까? 어제의 질문! ${q.q}`;
     // 두 아이 모두 고르거나 글로 쓴다.
     if (ui.typing) {
       return `<div class="stage">${heroHtml('hero-big')}</div>${bubble(hello)}
@@ -240,7 +298,7 @@
   function renderQAck(d, part) {
     const r = HIGH ? D.REACTIONS_HIGH : D.REACTIONS_LOW;
     return `<div class="stage">${heroHtml('hero-big')}</div>
-      ${bubble(r[(dayIdx(TODAY) + d.answer.label.length) % r.length])}
+      ${bubble(r[(dayIdx(ui.day) + d.answer.label.length) % r.length])}
       <div class="grid"><button class="big picked wide" style="min-height:72px"><span class="e">${d.answer.icon}</span>${esc(d.answer.label)}</button></div>
       <button class="big go" data-act="nextQ">다음 ▶ 마음 날씨 알려줘</button>`;
   }
@@ -277,6 +335,7 @@
   const heroIdx = (d, part) => (d.done ? P(part).pos.length - 1 : d.steps);
 
   function journeySay(d, part) {
+    if (d.done && ui.day !== TODAY) return `어제 ${P(part).label} 모험도 끝! 잘했어. 오늘 모험도 하러 갈까? ${curHat().icon || '🌟'}`;
     if (d.done) return part === 'pm'
       ? `오늘 하루 끝! 정말 수고했어. 잘 자, 내일 아침에 만나자 ${curHat().icon || '🌙'}`
       : `오늘 모험 끝! 정말 멋졌어. 내일 아침에 또 만나자 ${curHat().icon || '👋'}`;
@@ -304,10 +363,10 @@
   }
 
   // 화면을 다시 그리지 않고 제자리에서 바꿔야 아침이가 깡충 뛰는 움직임이 보인다.
-  function updateJourney(part) {
+  function updateJourney(part, day) {
     const hero = $('#hero');
-    if (!hero || ui.tab !== part) return;
-    const d = getDay(TODAY, part);
+    if (!hero || ui.tab !== part || ui.day !== (day || ui.day)) return;   // 그 사이 다른 탭·날짜로 옮겼으면 건드리지 않는다
+    const d = getDay(ui.day, part);
     const p = P(part).pos[heroIdx(d, part)];
     hero.style.left = (p[0] / 3).toFixed(2) + '%';
     hero.style.top = (p[1] / 4.4).toFixed(2) + '%';
@@ -318,21 +377,22 @@
   }
 
   function doStep(i) {
-    const part = curPart(), C = P(part), d = getDay(TODAY, part);
-    if (d.done || i !== d.steps) return;
+    const part = curPart(), C = P(part), day = ui.day, d = getDay(day, part);
+    if (d.done || i !== d.steps || (part === 'pm' && pmLocked())) return;
     const last = i === C.steps.length - 1;
-    upd(TODAY, (x) => { x.steps = i + 1; if (!x.t0) x.t0 = Date.now(); (x.times || (x.times = []))[i] = Date.now(); }, part);
+    upd(day, (x) => { x.steps = i + 1; if (!x.t0) x.t0 = Date.now(); (x.times || (x.times = []))[i] = Date.now(); }, part);
     ui.say = stepDone(part, i) + ' ' + (last ? (part === 'pm' ? '' : '마지막까지 왔어!') : stepAsk(part, i + 1));
     tone([523 + i * 50, 659 + i * 50]);
-    updateJourney(part);
-    if (last) setTimeout(() => finish(part), 1100);
+    updateJourney(part, day);
+    if (last) setTimeout(() => finish(part, day), 1100);
     if (part === 'am' && i === 0) setTimeout(offerGame, 1000);   // 아침: 일어나기 직후, 밥 먹기 전
   }
 
   // ---------- 미니게임 (아침 일어나기 → 밥먹기 사이, 하루 한 번 제안) ----------
   function offerGame() {
-    const d = getDay(TODAY, 'am');
-    if (!window.MQGame || d.gameDone || d.done || d.steps !== 1 || ui.tab !== 'am' || !$('#hero') || !$('#modal').hidden) return;
+    const d = getDay(ui.day, 'am');
+    // 어제 아침을 뒤늦게 채울 때는 게임을 권하지 않는다
+    if (!window.MQGame || ui.day !== TODAY || d.gameDone || d.done || d.steps !== 1 || ui.tab !== 'am' || !$('#hero') || !$('#modal').hidden) return;
     openModal(`<div class="pop">
       <div class="sticker">${KID.pet}💤</div>
       <h2>잠깐! 준비운동 시간</h2>
@@ -343,26 +403,28 @@
   }
   function gameDone(r) {
     ui.lock = false; closeModal();
-    upd(TODAY, (x) => { x.gameDone = true; if (r) { x.game = { score: r.best, plays: r.plays }; x.gameMs = (x.gameMs || 0) + r.ms; } }, 'am');
+    upd(ui.day, (x) => { x.gameDone = true; if (r) { x.game = { score: r.best, plays: r.plays }; x.gameMs = (x.gameMs || 0) + r.ms; } }, 'am');
     ui.say = stepAsk('am', 1); updateJourney('am');
   }
 
-  function finish(part) {
-    if (getDay(TODAY, part).done) return;
+  function finish(part, day) {
+    if (getDay(day, part).done) return;
     const n = totalDone(), before = curHat(), best = bestSecs(part);
     const sticker = D.STICKERS[n % D.STICKERS.length];
     let secs = null, record = false;
-    upd(TODAY, (x) => {
+    upd(day, (x) => {
       x.done = true; x.sticker = sticker; x.doneAt = Date.now();
-      // 걸린 시간에서 미니게임에 쓴 시간은 뺀다
+      // 걸린 시간에서 미니게임에 쓴 시간은 뺀다. 다음날 이어서 한 기록은 시간 기록에서 제외한다.
       const took = x.t0 ? Math.round((Date.now() - x.t0 - (x.gameMs || 0)) / 1000) : 0;
-      if (took > 0 && took < 3 * 3600) { x.secs = took; secs = took; record = best !== null && took < best; }
+      if (day === TODAY && took > 0 && took < 3 * 3600) { x.secs = took; secs = took; record = best !== null && took < best; }
     }, part);
     const after = curHat();
-    chips();
-    if (ui.tab !== part) return;   // 그 사이 다른 탭으로 옮겼으면 기록만 남기고 조용히 끝낸다
-    ui.say = journeySay(getDay(TODAY, part), part);
-    updateJourney(part);
+    chips(); updateLockIcon();
+    if (ui.tab !== part || ui.day !== day) return;   // 그 사이 다른 탭·날짜로 옮겼으면 기록만 남기고 조용히 끝낸다
+    ui.say = journeySay(getDay(day, part), part);
+    updateJourney(part, day);
+    const yb = document.querySelector(`.daybar button[data-d="${YEST}"]`);
+    if (yb) yb.textContent = yestLabel(part);
     confetti();
     tone([523, 659, 784, 1047]);
     setTimeout(() => showReward(sticker, after !== before ? after : null, secs, record, part), 900);
@@ -394,48 +456,6 @@
     setTimeout(() => { box.innerHTML = ''; }, 5200);
   }
 
-  // ---------- 기록 ----------
-  function renderLog() {
-    const y = ui.ly, m = ui.lm;
-    const lead = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
-    let cells = DOW.map((w) => `<div class="dow">${w}</div>`).join('') + '<div class="day empty"></div>'.repeat(lead);
-    for (let n = 1; n <= days; n++) {
-      const k = `${y}-${pad(m + 1)}-${pad(n)}`, a = getDay(k, 'am'), p = getDay(k, 'pm');
-      const mood = a.mood || p.mood;
-      cells += `<button class="day ${k === TODAY ? 'today' : ''} ${k === ui.sel ? 'sel' : ''}" data-act="day" data-k="${k}">
-        <span>${n}</span><span class="dm">${mood ? moodOf(mood).icon : ''}</span>
-        <span class="ds">${a.done ? a.sticker || '⭐' : ''}${p.done ? p.sticker || '⭐' : ''}</span></button>`;
-    }
-    const hats = D.HATS.filter((h) => h.days > 0).map((h) =>
-      `<div class="hat-item ${totalDone() >= h.days ? '' : 'lock'}"><span class="e">${h.icon}</span>${h.days}번</div>`).join('');
-    const best = HIGH ? PARTS.map((p) => [p, Object.values(recs(p)).filter((d) => d.secs).map((d) => d.secs)]).filter((x) => x[1].length) : [];
-    return `<div class="panel">
-        <div class="cal-head"><button data-act="prevM" aria-label="이전 달">◀</button><h2 style="margin:0">${y}년 ${m + 1}월</h2><button data-act="nextM" aria-label="다음 달">▶</button></div>
-        <div class="cal">${cells}</div>
-      </div>
-      ${renderDetail()}
-      <div class="panel"><h2>🎁 아침이 선물 (모험 ${totalDone()}번 완료)</h2><div class="hats">${hats}</div>
-        ${best.map(([p, v]) => `<p style="margin:10px 0 0">🏅 ${P(p).icon} ${P(p).label} 최고 기록: <b>${fmtDur(Math.min.apply(null, v))}</b></p>`).join('')}</div>`;
-  }
-
-  function renderDetail() {
-    const k = ui.sel;
-    if (!k) return '';
-    const dt = parse(k);
-    const head = `<h2>${dt.getMonth() + 1}월 ${dt.getDate()}일 (${DOW[dt.getDay()]})</h2>`;
-    const body = PARTS.map((part) => {
-      const d = getDay(k, part);
-      if (!d.answer && !d.mood && !d.steps) return '';
-      const steps = P(part).steps.map((s, i) => `<span class="${i < d.steps ? '' : 'off'}" title="${s.label}">${s.icon}</span>`).join('');
-      return `<div class="sec"><b>${P(part).icon} ${P(part).label}</b>
-        ${d.answer ? `<p>💬 ${esc(d.answer.q)}<br><b>${d.answer.icon} ${esc(d.answer.label)}</b></p>` : ''}
-        ${d.mood ? `<p>마음 날씨: <b>${moodOf(d.mood).icon} ${moodOf(d.mood).label}</b></p>` : ''}
-        <div class="steps-row">${steps}${d.done ? `<span>${d.sticker || '⭐'}</span>` : ''}</div>
-        ${HIGH && d.secs ? `<p>⏱️ ${fmtDur(d.secs)} 만에 도착</p>` : ''}</div>`;
-    }).join('');
-    return `<div class="panel detail">${head}${body || '<p>아직 기록이 없어요.</p>'}</div>`;
-  }
-
   // ---------- 설정 팝업 ----------
   function openModal(html) { const m = $('#modal'); m.innerHTML = html; m.hidden = false; }
   function closeModal() { $('#modal').hidden = true; $('#modal').innerHTML = ''; }
@@ -450,18 +470,21 @@
 
   function answer(icon, label) {
     const part = curPart();
-    upd(TODAY, (d) => { d.answer = { icon, label, q: curQ(part).q }; d.answerAt = Date.now(); }, part);
+    if (part === 'pm' && pmLocked()) return;
+    upd(ui.day, (d) => { d.answer = { icon, label, q: curQ(part).q }; d.answerAt = Date.now(); }, part);
     ui.pending = 'q-ack'; ui.typing = false; tone([523, 659]); render();
   }
 
   // ---------- 이벤트 ----------
   const ACT = {
     tab: (b) => { ui.tab = b.dataset.t; ui.pending = null; ui.typing = false; render(); },
+    goAm: () => { ui.tab = 'am'; ui.pending = null; ui.typing = false; render(); },
+    setDay: (b) => { ui.day = b.dataset.d; ui.pending = null; ui.typing = false; render(); },
     pickQ: (b) => { const c = curQ(curPart()).a[+b.dataset.i]; answer(c[0], c[1]); },
     typeQ: () => { ui.typing = true; render(); const i = $('#typeInput'); if (i) i.focus(); },
     untype: () => { ui.typing = false; render(); },
     nextQ: () => { ui.pending = null; render(); },
-    pickMood: (b) => { upd(TODAY, (d) => { d.mood = b.dataset.id; d.moodAt = Date.now(); }, curPart()); ui.pending = 'mood-ack'; tone([494, 659]); render(); },
+    pickMood: (b) => { upd(ui.day, (d) => { d.mood = b.dataset.id; d.moodAt = Date.now(); }, curPart()); ui.pending = 'mood-ack'; tone([494, 659]); render(); },
     nextMood: () => { ui.pending = null; render(); },
     step: (b) => doStep(+b.dataset.i),
     gameStart: () => { ui.lock = true; window.MQGame.start($('#modal .pop'), { high: HIGH, tone }, gameDone); },
@@ -488,7 +511,11 @@
   });
 
   window.addEventListener('online', flush);
-  document.addEventListener('visibilitychange', () => { flush(); pollReset(); });
+  document.addEventListener('visibilitychange', () => {
+    // 밤새 열어둔 화면이면 날짜가 바뀐 것이니 새로 불러온다 (안 그러면 어제 날짜로 기록된다)
+    if (LIVE && !document.hidden && fmt(new Date()) !== TODAY) { location.reload(); return; }
+    flush(); pollReset();
+  });
   setInterval(pollReset, 15000);
   render();
   flush();
