@@ -69,7 +69,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* 길 위의 모험 */
 .map {
-  position: relative; container-type: inline-size; width: min(100%, 420px, calc((100dvh - 250px) * .68));
+  position: relative; container-type: inline-size; width: min(100%, 420px, calc((100dvh - 305px) * .68));
   aspect-ratio: 300 / 440; margin: 0 auto; border-radius: 28px; overflow: hidden;
   background: linear-gradient(#bfe8ff 0%, #e4f8d8 45%, #b6e59c 100%); box-shadow: var(--shadow);
 }
@@ -232,3 +232,9 @@ body.pm.low, body.pm.high { background: linear-gradient(#2a2d63, #4a4d93 55%, #7
 .panel > .sec { background: #fff; border-radius: 14px; padding: 8px 10px; margin-top: 8px; }
 .sec h3 { margin: 0 0 4px; font-size: 1rem; }
 .sec p { margin: 4px 0; }
+
+/* 오늘 / 어제 고르기 */
+.daybar { display: flex; gap: 8px; margin-bottom: 8px; }
+.daybar button { flex: 1; border: 0; border-radius: 14px; padding: 8px 6px; background: rgba(255, 255, 255, .8); font-size: .95rem; box-shadow: 0 2px 0 rgba(58, 47, 75, .12); }
+.daybar button.on { background: var(--sun); font-weight: bold; }
+.notice.yest { margin-bottom: 8px; font-size: .9rem; }
